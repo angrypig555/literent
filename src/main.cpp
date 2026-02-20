@@ -38,6 +38,7 @@ bool LiterentToolActive = true;
 static bool open_about = false;
 static bool open_credits = false;
 static bool open_settings = false;
+static bool open_download = false;
 
 const char* state_names[] = {
     "Queued",                     // 0
@@ -199,11 +200,20 @@ int main() {
                 if (ImGui::MenuItem("Credits")) {
                     open_credits = true;
                 }
+                if (ImGui::MenuItem("Exit")) {
+                    break;
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::BeginMenu("Settings")) {
                 if (ImGui::MenuItem("Settings")) {
                     open_settings = true;
+                }
+                ImGui::EndMenu();
+            }
+            if (ImGui::BeginMenu("New")) {
+                if (ImGui::MenuItem("New download")) {
+                    open_download = true;
                 }
                 ImGui::EndMenu();
             }
@@ -224,10 +234,17 @@ int main() {
             open_settings = false;
         }
 
+        if (open_download == true) {
+            ImGui::OpenPopup("new_download");
+            open_download = false;
+        }
+
         if (ImGui::BeginPopupModal("about_popup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Literent \n"
                         "Lite bittorrent client\n"
-                        "angrypig555\n");
+                        "Copyright (c) 2026 angrypig555\n"
+                        "Licensed under the MIT License\n"
+                        "See LICENSE for more information\n");
             
             if (ImGui::Button("Ok")) {
                 ImGui::CloseCurrentPopup();
@@ -248,6 +265,7 @@ int main() {
         }
 
         if (ImGui::BeginPopupModal("settings_popup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Configuration is saved to ~/.config/literent/config.toml");
             if (ImGui::Checkbox("DHT (Distributed Hash Table)", &dht_enabled)) {
                 lt::settings_pack p;
                 p.set_bool(lt::settings_pack::enable_dht, dht_enabled);
@@ -277,64 +295,78 @@ int main() {
             }
             ImGui::EndPopup();
         }
-        ImGui::Text("Enter directory to save to");
-        ImGui::InputTextWithHint("##downloaddir", homedir_downloads.c_str(), download_dir, IM_ARRAYSIZE(download_dir));
-        ImGui::Text("Please enter a magnet link");
-        ImGui::InputText("##magnet", magnet_link, IM_ARRAYSIZE(magnet_link));
-        if (ImGui::Button("Download")) {
-            lt::add_torrent_params atp = lt::parse_magnet_uri(magnet_link);
-            atp.save_path = download_dir;
-            lt::torrent_handle h = torrent_ses.add_torrent(atp);
-        }
-        ImGui::Text("Or, open a .torrent file.");
-        if (ImGui::Button("Open")) {
-            IGFD::FileDialogConfig config;
-            config.path = ".";
-            ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".torrent", config);
-        }
 
-        if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey")) {
-            if (ImGuiFileDialog::Instance()->IsOk()) {
-                filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
-                filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
+        if (ImGui::BeginPopupModal("new_download", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("New download wizard");
+            ImGui::Text("Please enter download directory");
+            ImGui::InputTextWithHint("##downloaddir", homedir_downloads.c_str(), download_dir, IM_ARRAYSIZE(download_dir));
+            const char* items[] = { "Torrent file", "Magnet link"};
+            static int selected_item = 0;
+            ImGui::Combo("Select a type", &selected_item, items, IM_ARRAYSIZE(items));
+            if (selected_item == 0) {
+                if (ImGui::Button("Open .torrent file")) {
+                    IGFD::FileDialogConfig config;
+                    config.path = ".";
+                    ImGuiFileDialog::Instance()->OpenDialog("ChooseFileDlgKey", "Choose File", ".torrent", config);
+                }
+                if (ImGuiFileDialog::Instance()->Display("ChooseFileDlgKey")) {
+                    if (ImGuiFileDialog::Instance()->IsOk()) {
+                        filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+                        filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
                 
+                    }
+                    ImGuiFileDialog::Instance()->Close();
+                }
+                if (!filePathName.empty()) {
+                    std::string text_to_print = filePathName + " Loaded";
+                    ImGui::Text(text_to_print.c_str());
+                    if (ImGui::Button("Download .torrent")) {
+                        std::ifstream file(filePathName);
+                        if (!file.is_open()) { // checking if the file is openable
+                            std::cerr << "failed to open file: " << filePath << std::endl;
+                            fileopenfailed = 1;
+                            break;
+                        }
+                        file.close();
+                        lt::error_code ercode;
+
+                        auto info = std::make_shared<lt::torrent_info>(filePathName, ercode);
+
+                        if (ercode) {
+                            std::cerr << "libtorrent could not open the torrent file" << std::endl;
+                            fileopenfailed = 1;
+                        } else {
+                            lt::add_torrent_params atp;
+                            atp.ti = info;
+                            atp.save_path = download_dir;
+
+                            torrent_ses.add_torrent(atp);
+                            fileopenfailed = 0;
+                            filePathName.clear();
+                            ImGui::CloseCurrentPopup();
+                        }
+                        
+                    }
+                }
+                if (fileopenfailed == 1) {
+                    ImGui::Text("Could not open file");
+                }
+            } else if (selected_item == 1) {
+                ImGui::Text("Please enter a magnet link");
+                ImGui::InputText("##magnet", magnet_link, IM_ARRAYSIZE(magnet_link));
+                if (ImGui::Button("Download")) {
+                    lt::add_torrent_params atp = lt::parse_magnet_uri(magnet_link);
+                    atp.save_path = download_dir;
+                    lt::torrent_handle h = torrent_ses.add_torrent(atp);
+                    ImGui::CloseCurrentPopup();
+                }
             }
-            ImGuiFileDialog::Instance()->Close();
+            ImGui::EndPopup();
         }
         
-        if (!filePathName.empty()) {
-            std::string text_to_print = filePathName + " Loaded";
-            ImGui::Text(text_to_print.c_str());
-            if (ImGui::Button("Download .torrent")) {
-                std::ifstream file(filePathName);
-                if (!file.is_open()) { // checking if the file is openable
-                    std::cerr << "failed to open file: " << filePath << std::endl;
-                    fileopenfailed = 1;
-                    break;
-                }
-                file.close();
-                lt::error_code ercode;
-
-                auto info = std::make_shared<lt::torrent_info>(filePathName, ercode);
-
-                if (ercode) {
-                    std::cerr << "libtorrent could not open the torrent file" << std::endl;
-                    fileopenfailed = 1;
-                } else {
-                    lt::add_torrent_params atp;
-                    atp.ti = info;
-                    atp.save_path = download_dir;
-
-                    torrent_ses.add_torrent(atp);
-                    fileopenfailed = 0;
-                    filePathName.clear();
-                }
-
-            }
-        }
-        if (fileopenfailed == 1) {
-            ImGui::Text("Could not open file");
-        }
+        
+        
+        
         auto handles = torrent_ses.get_torrents();
         if (handles.empty()) {
             ImGui::Text("No active downloads");
@@ -409,7 +441,9 @@ int main() {
                 ImGui::EndTable();
             }
         }
-        if (ImGui::Button("Exit")) break; 
+        if (ImGui::Button("New download")) {
+            open_download = true;
+        }
         
         ImGui::End();
         ImGui::PopStyleVar(3);
