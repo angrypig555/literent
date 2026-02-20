@@ -6,6 +6,8 @@
 #include<fstream>
 #include<stdlib.h>
 #include<filesystem>
+#include<ctime>
+#include<ratio>
 
 #include<libtorrent/session.hpp>
 #include<libtorrent/session_params.hpp>
@@ -67,6 +69,9 @@ static bool dht_enabled;
 static bool lsd_enabled;
 static bool upnp_enabled;
 static bool natpmp_enabled;
+
+static int selected = 0;
+
 
 
 const char* get_home_dir() {
@@ -377,7 +382,6 @@ int main() {
         } else {
             if (ImGui::BeginTable("TorrentList", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))  {
 
-                // 1. Setup Headers
                 ImGui::TableSetupColumn("Filename");
                 ImGui::TableSetupColumn("Peers");
                 ImGui::TableSetupColumn("Seeds");
@@ -445,10 +449,74 @@ int main() {
                 ImGui::EndTable();
             }
         }
+    std::vector<lt::torrent_handle> handles_metadata = torrent_ses.get_torrents();
+    static int selected_idx = 0;
+
+
+    std::vector<std::string> names;
+    for (auto& h : handles) names.push_back(h.status().name);
+
+    std::vector<const char*> item_ptrs;
+    for (auto& n : names) item_ptrs.push_back(n.c_str());
+
+
+    ImGui::Combo("Select torrent for more information", &selected_idx, item_ptrs.data(), item_ptrs.size());
+    if (selected_idx >= (int)handles.size()) {
+        selected_idx = (int)handles.size() - 1;
+    }   
+    if (!handles.empty() && selected_idx >= 0 && selected_idx < handles.size()) {
+        lt::torrent_handle selected_handle = handles[selected_idx];
+        if (selected_handle.is_valid()) {
+            lt::torrent_status s = selected_handle.status();
+            auto info_ptr = selected_handle.torrent_file();
+            if (info_ptr) {
+                int num_files = info_ptr->num_files();
+                int num_peers = s.num_peers;
+                int all_peers = s.list_peers;
+                int num_seeds = s.num_seeds;
+                int all_seeds = s.num_seeds;
+                time_t creation_date_epoch = info_ptr->creation_date();
+                char* creation_date = ctime(&creation_date_epoch);
+                std::string creator = info_ptr->creator();
+                std::string comment = info_ptr->comment();
+                long long total_size = info_ptr->total_size();
+                std::vector<lt::announce_entry> trackers = info_ptr->trackers();
+                std::vector<lt::web_seed_entry> webseeds = info_ptr->web_seeds();
+                bool isv2 = info_ptr->v2();
+                bool isprivate = info_ptr->priv();
+                ImGui::Text("Information");
+                ImGui::Text("Files:");
+                for (int i = 0; i < info_ptr->num_files(); ++i) {
+                    ImGui::Text(" - %s\n", info_ptr->files().file_path(i).c_str());
+                } 
+                ImGui::Text("Total: %d", num_files);
+                ImGui::Text("Total size: %d", total_size);
+                ImGui::Text("Creator: %s", creator.c_str());
+                ImGui::Text("Comment: %s", comment.c_str());
+                ImGui::Text("Created: %d", creation_date);
+                ImGui::Text("Current peers: %d", num_peers);
+                ImGui::Text("Available peers: %d", all_peers);
+                ImGui::Text("Current seeds: %d", num_seeds);
+                ImGui::Text("Available seeds: %d", all_seeds);
+                ImGui::Text("Trackers:\n");
+                for (lt::announce_entry track : trackers) {
+                    ImGui::Text(" - %s\n", track.url.c_str());
+                }
+                ImGui::Text("Webseeds:\n");
+                for (lt::web_seed_entry webseed : webseeds) {
+                    ImGui::Text(" - %s\n", webseed.url.c_str());
+                }
+                ImGui::Text("V2: %d", isv2);
+                ImGui::Text("Private: %d", isprivate);
+            } else {
+                ImGui::Text("Loading metadata...");
+            }
+        }
+        
+    }   
         if (ImGui::Button("New download")) {
             open_download = true;
         }
-        
         ImGui::End();
         ImGui::PopStyleVar(3);
         ImGui::Render();
