@@ -78,6 +78,9 @@ int main() {
     ImGuiIO& io = ImGui::GetIO();
 
     lt::session torrent_ses;
+    lt::settings_pack pack;
+    pack.set_str(lt::settings_pack::user_agent, "Literent/0.1.0");
+    torrent_ses.apply_settings(pack);
     while (!glfwWindowShouldClose(window)) {
         
 
@@ -221,14 +224,17 @@ int main() {
         if (handles.empty()) {
             ImGui::Text("No active downloads");
         } else {
-            if (ImGui::BeginTable("TorrentList", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))  {
+            if (ImGui::BeginTable("TorrentList", 8, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))  {
 
                 // 1. Setup Headers
                 ImGui::TableSetupColumn("Filename");
+                ImGui::TableSetupColumn("Peers");
+                ImGui::TableSetupColumn("Seeds");
                 ImGui::TableSetupColumn("Status");
                 ImGui::TableSetupColumn("Progress", ImGuiTableColumnFlags_WidthFixed, 150.0f);
                 ImGui::TableSetupColumn("Speed", ImGuiTableColumnFlags_WidthFixed, 100.0f);
                 ImGui::TableSetupColumn("Remove");
+                ImGui::TableSetupColumn("Pause");
                 ImGui::TableHeadersRow();
 
                 auto handles = torrent_ses.get_torrents();
@@ -241,29 +247,43 @@ int main() {
                     ImGui::Text("%s", s.name.c_str());
 
                     ImGui::TableSetColumnIndex(1);
+                    ImGui::Text("%d", s.num_peers);
+
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::Text("%d", s.num_seeds);
+
+                    ImGui::TableSetColumnIndex(3);
                     if (s.state >=0 && s.state < 8) {
                         ImGui::Text("%s", state_names[s.state]);
                     } else {
                         ImGui::Text("Unknown");
                     }
 
-                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TableSetColumnIndex(4);
                     ImGui::ProgressBar(s.progress, ImVec2(-FLT_MIN, 0)); 
 
-                    ImGui::TableSetColumnIndex(3);
+                    ImGui::TableSetColumnIndex(5);
                     ImGui::Text("%.1f kB/s", s.download_rate / 1000.0f);
                     
-                    ImGui::TableSetColumnIndex(4);
+                    ImGui::TableSetColumnIndex(6);
                     if (ImGui::Button("Remove")) {
                         if (h.is_valid()) {
                             torrent_ses.remove_torrent(h);
                         }
                     }
 
-                    ImGui::TableSetColumnIndex(5);
-                    if (ImGui::Button("Pause")) {
-                        if (h.is_valid()) {
-                            torrent_ses.pause();
+                    ImGui::TableSetColumnIndex(7);
+                    if (s.flags & lt::torrent_flags::paused) {
+                        if (ImGui::Button("Resume")) {
+                            if (h.is_valid()) {
+                                h.resume();
+                            }
+                        }
+                    } else {
+                        if (ImGui::Button("Pause")) {
+                            if (h.is_valid()) {
+                                h.pause();
+                            }
                         }
                     }
                 }
