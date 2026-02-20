@@ -361,6 +361,10 @@ int main() {
                     ImGui::CloseCurrentPopup();
                 }
             }
+            if (ImGui::Button("Return")) {
+                ImGui::SameLine();
+                ImGui::CloseCurrentPopup();
+            }
             ImGui::EndPopup();
         }
         
