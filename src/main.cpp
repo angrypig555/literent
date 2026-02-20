@@ -30,6 +30,8 @@ const char* state_names[] = {
     "Checking Fastresume"         // 7
 };
 
+int show_legal_popup = 1;
+
 int imgui_init() {
     if (!glfwInit()) return 1;
     GLFWwindow* window = glfwCreateWindow(1280, 720, "Literent Torrent Client", NULL, NULL);
@@ -74,7 +76,25 @@ int main() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-
+        if (show_legal_popup == 1) {
+            ImGui::OpenPopup("Warning");
+        }
+        if (ImGui::BeginPopupModal("Warning", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Warning:\n"
+                        "Literent is a peer to peer filesharing tool using the bittorrent protocol.\n"
+                        "When you download a torrent, it's files will be shared back to people on the internet.\n"
+                        "Any content you share is your responsibility.");
+            if (ImGui::Button("I agree")) {
+                show_legal_popup = 0;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Exit")) {
+                goto exit;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
         ImGui::SetNextWindowSize(ImGui::GetMainViewport()->WorkSize);
         ImGui::Begin("Literent");
@@ -146,7 +166,7 @@ int main() {
         
         glfwSwapBuffers(window);
     }
-
+    exit:
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
