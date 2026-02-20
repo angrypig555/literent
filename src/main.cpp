@@ -4,6 +4,8 @@
 #include<vector>
 #include<cstdlib>
 #include<fstream>
+#include<stdlib.h>
+#include<filesystem>
 
 #include<libtorrent/session.hpp>
 #include<libtorrent/session_params.hpp>
@@ -21,9 +23,10 @@
 
 #include "GLFW/glfw3.h"
 
+#include"toml++/toml.hpp"
 
 static char magnet_link[1024] = "";
-static char download_dir[1024] = ".";
+static char download_dir[1024] = "";
 
 std::string filePathName;
 std::string filePath;
@@ -34,6 +37,7 @@ bool LiterentToolActive = true;
 
 static bool open_about = false;
 static bool open_credits = false;
+static bool open_settings = false;
 
 const char* state_names[] = {
     "Queued",                     // 0
@@ -46,30 +50,87 @@ const char* state_names[] = {
     "Checking Fastresume"         // 7
 };
 
-int show_legal_popup = 1;
+int show_legal_popup;
 
-int imgui_init() {
-    if (!glfwInit()) return 1;
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Literent Torrent Client", NULL, NULL);
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
+std::string homedir;
+std::string homedir_downloads;
+std::string homeDirectory;
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGui::StyleColorsDark();
+int attempt_counter;
 
-    ImGui_ImplGlfw_InitForOpenGL(window, true);
-    ImGui_ImplOpenGL3_Init("#version 130");
+std::string conf_contents;
+static bool has_tried_to_open_popup = false;
+
+static bool pex_enabled;
+static bool dht_enabled;
+static bool lsd_enabled;
+static bool upnp_enabled;
+static bool natpmp_enabled;
+
+
+const char* get_home_dir() {
+    homedir = getenv("HOME");
+    return homedir.c_str();
+}
+
+int read_config() {
+    homeDirectory = get_home_dir();
+    std::string conf_folder =  homeDirectory + "/.config/";
+    std::string literent_conf_folder_string = conf_folder + "literent/";
+    std::string config_toml = literent_conf_folder_string + "config.toml";
+    reread_config:
+    std::filesystem::path literent_conf_folder = std::string(literent_conf_folder_string);
+    std::filesystem::path literent_conf_toml_path = config_toml;
+    bool conf_folder_exists = std::filesystem::exists(literent_conf_folder);
+    if (conf_folder_exists == true) {
+        bool conf_toml_exists = std::filesystem::exists(literent_conf_toml_path);
+        if (conf_toml_exists == true) {
+                auto conf_raw = toml::parse_file(config_toml);
+                show_legal_popup = conf_raw["show_legal_popup"].value<int>().value_or(1);
+                pex_enabled = conf_raw["pex_enabled"].value<bool>().value_or(true);
+                dht_enabled = conf_raw["dht_enabled"].value<bool>().value_or(true);
+                lsd_enabled = conf_raw["lsd_enabled"].value<bool>().value_or(true);
+                upnp_enabled = conf_raw["upnp_enabled"].value<bool>().value_or(false);
+                natpmp_enabled = conf_raw["natpmp_enabled"].value<bool>().value_or(false);
+        } else {
+            std::ofstream toml_file(config_toml);
+            toml_file << "show_legal_popup = 1\n" << "pex_enabled = true\n" << "dht_enabled = true\n" << "lsd_enabled = true\n" << "upnp_enabled = false\n" << "natpmp_enabled = false\n";
+            toml_file.close();
+            goto reread_config;
+        }
+    } else {
+        if (attempt_counter >= 3) {
+            return 1;
+        }
+        std::filesystem::create_directory(literent_conf_folder);
+        attempt_counter += 1;
+        goto reread_config;
+    }
+    return 0;
+}
+
+int write_config(auto value, std::string value_name) {
+    homeDirectory = get_home_dir();
+    std::string conf_folder =  homeDirectory + "/.config/";
+    std::string literent_conf_folder_string = conf_folder + "literent/";
+    std::string config_toml = literent_conf_folder_string + "config.toml";
+    auto config_raw = toml::parse_file(config_toml);
+
+    config_raw.insert_or_assign(value_name, value);
+    std::ofstream config_file(config_toml);
+    config_file << config_raw << "\n";
+    config_file.close();
     return 0;
 }
 
 int main() {
+    show_legal_popup = 1;
+    read_config();
     if (!glfwInit()) return 1;
     GLFWwindow* window = glfwCreateWindow(1280, 720, "Literent", NULL, NULL);
     if (!window) return 1;
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); 
-
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -80,7 +141,14 @@ int main() {
     lt::session torrent_ses;
     lt::settings_pack pack;
     pack.set_str(lt::settings_pack::user_agent, "Literent/0.1.0");
+    pack.set_bool(lt::settings_pack::enable_dht, dht_enabled);
+    pack.set_bool(lt::settings_pack::enable_lsd, lsd_enabled);
+    pack.set_bool(lt::settings_pack::enable_upnp, upnp_enabled);
+    pack.set_bool(lt::settings_pack::enable_natpmp, natpmp_enabled);
     torrent_ses.apply_settings(pack);
+    homeDirectory = get_home_dir();
+    homedir_downloads = homeDirectory + "/Downloads/";
+    snprintf(download_dir, sizeof(download_dir), "%s", homedir_downloads.c_str());
     while (!glfwWindowShouldClose(window)) {
         
 
@@ -95,8 +163,11 @@ int main() {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        if (show_legal_popup == 1) {
-            ImGui::OpenPopup("Warning");
+        if (!has_tried_to_open_popup) {
+            if (show_legal_popup == 1) {
+                ImGui::OpenPopup("Warning");
+            }
+            has_tried_to_open_popup = true;
         }
         if (ImGui::BeginPopupModal("Warning", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Warning:\n"
@@ -105,6 +176,7 @@ int main() {
                         "Any content you share is your responsibility.");
             if (ImGui::Button("I agree")) {
                 show_legal_popup = 0;
+                write_config(0, "show_legal_popup");
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
@@ -129,6 +201,12 @@ int main() {
                 }
                 ImGui::EndMenu();
             }
+            if (ImGui::BeginMenu("Settings")) {
+                if (ImGui::MenuItem("Settings")) {
+                    open_settings = true;
+                }
+                ImGui::EndMenu();
+            }
             ImGui::EndMenuBar();
         }
 
@@ -139,6 +217,11 @@ int main() {
         if (open_credits == true) {
             ImGui::OpenPopup("credits_popup");
             open_credits = false;
+        }
+
+        if (open_settings == true) {
+            ImGui::OpenPopup("settings_popup");
+            open_settings = false;
         }
 
         if (ImGui::BeginPopupModal("about_popup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -156,14 +239,46 @@ int main() {
             ImGui::Text("Dear ImGui - Copyright (c) 2014-2026 Omar Cornut, licensed under the MIT license.\n"
                         "libtorrent-rasterbar - Copyright (c) 2003-2020, Arvid Norberg All rights reserved, licensed under the BSD-3 license.\n"
                         "ImGuiFileDialog - Copyright (c) 2018-2025 Stephane Cuillerdier (aka Aiekick), licensed under the MIT license. \n"
+                        "TOML++ - Copyright (c) Mark Gillard <mark.gillard@outlook.com.au>, licensed under the MIT license\n"
                         "See THIRD-PARTY-LICENSES for more information");
             if (ImGui::Button("Okay")) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
+
+        if (ImGui::BeginPopupModal("settings_popup", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (ImGui::Checkbox("DHT (Distributed Hash Table)", &dht_enabled)) {
+                lt::settings_pack p;
+                p.set_bool(lt::settings_pack::enable_dht, dht_enabled);
+                torrent_ses.apply_settings(p);
+                write_config(dht_enabled, "dht_enabled");
+            }
+            if (ImGui::Checkbox("LSD (Local Service Discovery)", &lsd_enabled)) {
+                lt::settings_pack p;
+                p.set_bool(lt::settings_pack::enable_lsd, lsd_enabled);
+                torrent_ses.apply_settings(p);
+                write_config(lsd_enabled, "dht_enabled");
+            }
+            if (ImGui::Checkbox("UPNP (Universal Plug n Play)", &upnp_enabled)) {
+                lt::settings_pack p;
+                p.set_bool(lt::settings_pack::enable_upnp, upnp_enabled);
+                torrent_ses.apply_settings(p);
+                write_config(upnp_enabled, "upnp_enabled");
+            }
+            if (ImGui::Checkbox("NAT-PMP/PCP", &natpmp_enabled)) {
+                lt::settings_pack p;
+                p.set_bool(lt::settings_pack::enable_natpmp, natpmp_enabled);
+                torrent_ses.apply_settings(p);
+                write_config(natpmp_enabled, "natpmp_enabled");
+            }
+            if (ImGui::Button("Return")) {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
         ImGui::Text("Enter directory to save to");
-        ImGui::InputTextWithHint("##downloaddir", ".", download_dir, IM_ARRAYSIZE(download_dir));
+        ImGui::InputTextWithHint("##downloaddir", homedir_downloads.c_str(), download_dir, IM_ARRAYSIZE(download_dir));
         ImGui::Text("Please enter a magnet link");
         ImGui::InputText("##magnet", magnet_link, IM_ARRAYSIZE(magnet_link));
         if (ImGui::Button("Download")) {
@@ -242,6 +357,7 @@ int main() {
                     lt::torrent_status s = h.status();
 
                     ImGui::TableNextRow();
+                    ImGui::PushID(h.id());
 
                     ImGui::TableSetColumnIndex(0);
                     ImGui::Text("%s", s.name.c_str());
@@ -286,6 +402,8 @@ int main() {
                             }
                         }
                     }
+
+                    ImGui::PopID();
                 }
             
                 ImGui::EndTable();

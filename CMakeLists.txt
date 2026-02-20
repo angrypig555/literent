@@ -5,9 +5,9 @@ find_package(LibtorrentRasterbar REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(OpenGL REQUIRED)
 
-add_executable(literent src/main.cpp src/imgui/imgui.cpp src/imgui/imgui_draw.cpp src/imgui/imgui_widgets.cpp src/imgui/imgui_tables.cpp src/imgui/backends/imgui_impl_glfw.cpp src/imgui/backends/imgui_impl_opengl3.cpp src/imgui/imgui_demo.cpp src/imguifd/ImGuiFileDialog.cpp)
+add_executable(literent src/main.cpp src/imgui/imgui.cpp src/imgui/imgui_draw.cpp src/imgui/imgui_widgets.cpp src/imgui/imgui_tables.cpp src/imgui/backends/imgui_impl_glfw.cpp src/imgui/backends/imgui_impl_opengl3.cpp src/imgui/imgui_demo.cpp src/imguifd/ImGuiFileDialog.cpp src/toml++/toml.hpp)
 target_link_libraries(literent PRIVATE LibtorrentRasterbar::torrent-rasterbar glfw OpenGL::GL)
-target_include_directories(literent PRIVATE src/imgui src/imgui/backends src/imguifd)
+target_include_directories(literent PRIVATE src/imgui src/imgui/backends src/imguifd src/toml++)
 include(CTest)
 enable_testing()
 
