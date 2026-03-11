@@ -11,3 +11,5 @@ It supports both wayland and xorg.
 Usage is extremely simple, to add a torrent click the new torrent button.
 # Why should i use this?
 Most torrent clients run badly on old hardware due to their qt or gtk libraries but literent uses ImGUI, which is extremely light and fast.
+# AI Notice
+Some AI was used in this project, mainly for creating the skeleton for the GUI framework which has now been mostly overwritten or refactored and helping with obscure libtorrent functions.
