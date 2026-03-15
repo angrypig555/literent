@@ -15,4 +15,5 @@ Most torrent clients run badly on old hardware due to their qt or gtk libraries 
 Some AI was used in this project, mainly for creating the skeleton for the GUI framework which has now been mostly overwritten or refactored and helping with obscure libtorrent functions.
 
 # Debian / Linux Mint install instructions
-Please use the statically compiled version and follow the release instructions.
+Please install these packages with this command:
+`sudo apt install libtorrent-rasterbar2.0 libglfw3 libopengl0 libstdc++6`
